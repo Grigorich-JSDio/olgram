@@ -74,6 +74,21 @@ async def send_user_message(message: types.Message, super_chat_id: int, bot):
     """Переслать сообщение от пользователя, добавлять к нему user info при необходимости"""
     if bot.enable_additional_info:
         user_info = _("Сообщение от пользователя ")
+        entities = message.entities
+        entity = {
+            "offset": len(user_info),
+            "type": "text_mention",
+            'length': len(message.from_user.full_name),
+            "user": {
+                "id": message.from_user.id,
+                "is_bot": False,
+                "first_name": message.from_user.first_name,
+            }
+        }
+        if message.from_user.last_name is not None:
+            entity["user"]["last_name"] = message.from_user.last_name
+        if message.from_user.username is not None:
+            entity["user"]["username"] = message.from_user.username
         user_info += message.from_user.full_name
         if message.from_user.username:
             user_info += " | @" + message.from_user.username
@@ -81,9 +96,12 @@ async def send_user_message(message: types.Message, super_chat_id: int, bot):
 
         # Добавлять информацию в конец текста
         if message.content_type == types.ContentType.TEXT and len(message.text) + len(user_info) < 4093:  # noqa:E721
-            new_message = await message.bot.send_message(super_chat_id, message.text + "\n\n" + user_info)
+            entities = message.entities
+            entity['offset'] = len(message.text + "\n\n") + entity['offset']
+            entities.append(entity)
+            new_message = await message.bot.send_message(super_chat_id, message.text + "\n\n" + user_info, entities=entities)
         else:  # Не добавлять информацию в конец текста, информация отдельным сообщением
-            new_message = await message.bot.send_message(super_chat_id, text=user_info)
+            new_message = await message.bot.send_message(super_chat_id, text=user_info, entities=[entity])
             new_message_2 = await message.copy_to(super_chat_id, reply_to_message_id=new_message.message_id)
             await _redis.set(_message_unique_id(bot.pk, new_message_2.message_id), message.chat.id,
                              pexpire=ServerSettings.redis_timeout_ms())
